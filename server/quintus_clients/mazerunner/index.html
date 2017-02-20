@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Mazerunner</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+    <!-- Pull the engine from the Quintus CDN or load it locally -->
+    <!-- (use quintus-all.min.js for production) -->
+
+	<script src='lib/quintus.js'></script>
+	<script src='lib/quintus_sprites.js'></script>
+	<script src='lib/quintus_scenes.js'></script>
+	<script src='lib/quintus_input.js'></script>
+	<script src='lib/quintus_anim.js'></script>
+	<script src='lib/quintus_2d.js'></script>
+	<script src='lib/quintus_touch.js'></script>
+	<script src='lib/quintus_ui.js'></script>
+	<script src='lib/quintus_audio.js'></script>
+	<script src='main.js'></script>
+	<script src='../rl.js'></script>
+
+	<object style='position:absolute;top:-1000px;left:-1000px;' codebase='http://download.macromedia.com/pub/shockwave/cabs/flash/swflash.cab#version=6,0,0,0' ID='flashSocket' classid='clsid:D27CDB6E-AE6D-11cf-96B8-444553540000'>
+		<param name='Movie' value='client.swf'><param name='Src' value='client.swf'>
+		<param name='WMode' value='Window'>
+		<param name='Play' value='0'>
+		<param name='Loop' value='-1'>
+		<param name='Quality' value='High'>
+		<param name='Menu' value='-1'>
+		<param name='Scale' value='ShowAll'>
+		<param name='DeviceFont' value='0'>
+		<param name='EmbedMovie' value='0'>
+		<param name='SeamlessTabbing' value='1'>
+		<embed swliveconnect=true name='flashSocket' src='client.swf' width=240 height=24 quality='best' type='application/x-shockwave-flash' pluginspage='http://www.macromedia.com/go/getflashplayer'>
+		</embed>
+	</object>
+</head>
+<body style="margin: 0;">
+	<div id="debugtxt"></div>
+	<input type='button' id="btt_connect" value='connect' onclick='connect();' />
+	<input type='button' id="btt_disconnect" value='disconnect' onclick='SOCKET.close();' disabled />
+	<br />
+	<input type='button' id="btt_list_projects" value='list projects' onclick='requestListProjects();' disabled />
+	<br />
+	<input type='button' id="btt_get_project" value='get project' onclick='requestGetProject();' disabled />
+	<br />
+	<input type='button' id="btt_new_project" value='new project' onclick='requestNewProject();' disabled /> <input type='text' id='txt_new_project' >
+	<br />
+	<input type='button' id="btt_set_project" value='set project' onclick='requestSetProject();' disabled /> <input type='text' id='txt_set_project' >
+	<br />
+	<input type='button' id="btt_new_world" value='new world' onclick='requestNewWorld();' disabled /> <input type='text' id='txt_new_world' >
+	<br />
+	<input type='button' id="btt_new_algorithm" value='new algorithm' onclick='requestNewAlgorithm();' disabled /> <input type='text' id='txt_new_algorithm' >
+	<br />
+	<input type='button' id="btt_run_algorithm" value='run algorithm' onclick='requestRunAlgorithm();' disabled /> <input type='text' id='txt_run_algorithm' > on world: <input type='text' id='txt_run_on_world' >
+	<br />
+</body>
+</html>
