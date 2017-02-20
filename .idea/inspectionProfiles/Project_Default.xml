@@ -9,5 +9,23 @@
         </list>
       </option>
     </inspection_tool>
+    <inspection_tool class="PyPep8NamingInspection" enabled="true" level="WEAK WARNING" enabled_by_default="true">
+      <option name="ignoredBaseClasses">
+        <list>
+          <option value="unittest.TestCase" />
+          <option value="unittest.case.TestCase" />
+          <option value="autobahn.twisted.websocket.WebSocketServerFactory" />
+        </list>
+      </option>
+    </inspection_tool>
+    <inspection_tool class="PyUnresolvedReferencesInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredIdentifiers">
+        <list>
+          <option value="twisted.internet.reactor.run" />
+          <option value="twisted.internet.reactor.listenTCP" />
+          <option value="twisted.internet.reactor.stop" />
+        </list>
+      </option>
+    </inspection_tool>
   </profile>
 </component>
