@@ -465,7 +465,7 @@ class ShineProtocol(WebSocketServerProtocol):
         # generate the new project in our userRecord
         world_name = json_obj["worldName"]
         # TODO: make world parameters in request_new_world customizable by client
-        self.currentProject.worlds[world_name] = shine.World(world_name, 2, 4)  # for now: maze-runner s=(x,y), a=4 directions
+        self.currentProject.worlds[world_name] = shine.World(world_name, 2, 5)  # for now: maze-runner s=(x,y), a=4 directions + do-nothing
         return self.send_json({"response": "new world created", "worldName": world_name})
 
     # adds a batch of experience from the client to some ReplayMemory in a world

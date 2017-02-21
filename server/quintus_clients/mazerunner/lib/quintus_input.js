@@ -78,7 +78,7 @@ Quintus.Input = function(Q) {
                             ['fire', 'a' ]];
 
   // Clockwise from midnight (a la CSS)
-  var DEFAULT_JOYPAD_INPUTS =  [ 'up','right','down','left'];
+  var DEFAULT_JOYPAD_INPUTS =  ['up', 'right', 'down', 'left'];
 
   /**
    * Current state of bound inputs
@@ -89,6 +89,7 @@ Quintus.Input = function(Q) {
    */
   Q.inputs = {};
   Q.joypad = {};
+  Q.aiPolicyShutUp = 0; // last timestamp at which a AI policy shutup happened; after that, we wait for n seconds and can then start again acting via policy
 
   var hasTouch =  !!('ontouchstart' in window);
 
@@ -179,6 +180,7 @@ Quintus.Input = function(Q) {
         if(Q.input.keys[e.keyCode]) {
           var actionName = Q.input.keys[e.keyCode];
           Q.inputs[actionName] = true;
+          Q.aiPolicyShutUp = Date.now(); // reset the time to now so we have to wait another n sec until we can act via AI policy again
           Q.input.trigger(actionName);
           Q.input.trigger('keydown',e.keyCode);
         }
@@ -191,6 +193,7 @@ Quintus.Input = function(Q) {
         if(Q.input.keys[e.keyCode]) {
           var actionName = Q.input.keys[e.keyCode];
           Q.inputs[actionName] = false;
+          Q.aiPolicyShutUp = Date.now(); // reset the time to now so we have to wait another n sec until we can act via AI policy again
           Q.input.trigger(actionName + "Up");
           Q.input.trigger('keyup',e.keyCode);
         }
@@ -912,7 +915,7 @@ Quintus.Input = function(Q) {
       var p = this.entity.p;
 
       if(!p.stepDistance) { p.stepDistance = 32; }
-      if(!p.stepDelay) { p.stepDelay = 0.2; }
+      if(!p.stepDelay) { p.stepDelay = 0.1; }
 
       p.stepWait = 0;
       this.entity.on("step",this,"step");
@@ -950,26 +953,28 @@ Quintus.Input = function(Q) {
       p.diffX = 0;
       p.diffY = 0;
 
+      // arrow keys pressed
       if(Q.inputs['left']) {
         p.diffX = -p.stepDistance;
-      } else if(Q.inputs['right']) {
-        p.diffX = p.stepDistance;
       }
-
-      if(Q.inputs['up']) {
+      else if(Q.inputs['right']) {
+         p.diffX = p.stepDistance;
+      }
+      else if(Q.inputs['up']) {
         p.diffY = -p.stepDistance;
-      } else if(Q.inputs['down']) {
+      }
+      else if(Q.inputs['down']) {
         p.diffY = p.stepDistance;
       }
 
-      if(p.diffY || p.diffX ) {
-        this.entity.trigger("walkonestep");
+      if (p.diffY || p.diffX) {
 		p.stepping = true;
         p.origX = p.x;
         p.origY = p.y;
         p.destX = p.x + p.diffX;
         p.destY = p.y + p.diffY;
         p.stepWait = p.stepDelay;
+        this.entity.trigger("walkonestep");
       }
 
     }

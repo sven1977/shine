@@ -47,7 +47,21 @@ function change_score(delta) {
 	// update scoreboard
 	document.getElementById('debugtxt').innerHTML = "Score: "+_SCORE;
 }
-	
+
+// translates an action number into a keyboard event
+function action_to_event(a) {
+	if (a <= 0) {
+        console.warn("WARNING: action a ("+a+") is <= 0!");
+    }
+    return a == 1 ? 'up' : a == 2 ? 'right' : a == 3 ? 'down' : a == 4 ? 'left' : 'no-action';
+}
+
+// returns the current game state
+function get_state() {
+    return []; TODO
+}
+
+
 // -------------------------------------
 // GAME CONTROLS (components)
 // -------------------------------------
@@ -63,6 +77,15 @@ Q.Sprite.extend("Player", {
 		this.add('2d, stepControls');
 
 		this.on("walkonestep");
+		this.aiShutUpTimeout = 10; // sec after which the policy can take over again
+		this.aiFrameSkip = 4; // every how many frame should we act?
+		this.frameCount = 0; // some local frame counter (used for aiFrameSkip)
+		this.lastAiAction = -1; // -1 == none; 0=no action; 1=up, 2=right, 3=down, 4=left
+		this.qTable = QTable(5); // 5 actions
+		this.epsilon = 0.1;
+		this.epsilonMin = 0.01;
+		this.epsilonStep = 0.01;
+		this.policy = EpsilonGreedyPolicy(this.epsilon, this.qTable);
 
 		this.on("hit.sprite", function(collision) {
 			if(collision.obj.isA("Tower")) {
@@ -72,6 +95,50 @@ Q.Sprite.extend("Player", {
 				this.p.y = this.p.startY;
 			}
 		});
+	},
+	// put the AI policy here
+	step: function(dt) {
+		// long time no human interaction -> we can do AI
+		if (Q.aiPolicyShutUp + 10000 < Date.now()) {
+			// are we in an n-th frame? (act only every n frames)
+			if (this.frameCount % this.aiFrameSkip == 0) {
+				// anneal epsilon
+				this.epsilon -= this.epsilonStep;
+				if (this.epsilon < this.epsilonMin) {
+					this.epsilon = this.epsilonMin;
+				}
+				// get the action
+				var a = this.policy.get_a(get_state());
+				// set Q.inputs
+				var direction = action_to_event(this.lastAiAction)
+
+				// if we are here the first time after a shutup, we have to set all events to false
+				if (this.lastAiAction == -1) {
+					for (var dir in ['up', 'down', 'left', 'right']) {
+						Q.inputs[event] = false;
+                    }
+				}
+				// otherwise, only set the this.lastAiAction to false
+				else if (this.lastAiAction > 0) {
+					Q.inputs[action_to_event(this.lastAiAction)] = false;
+				}
+
+				// remember last action for next time
+				this.lastAiAction = a;
+				// and set the correct direction in the inputs
+				if (a > 0) {
+					Q.inputs[direction] = true;
+				}
+			}
+		}
+		// first time we run step with being shutUp
+		else if (this.lastAiAction >= 0) {
+			// erase last action (if there was any)
+			if (this.lastAiAction != 0) {
+				Q.inputs[action_to_event(this.lastAiAction)] = false;
+            }
+			this.lastAiAction = -1; // reset our lastAction marker
+		}
 	},
 	walkonestep: function(e) {
 		change_score(-1);
@@ -156,8 +223,10 @@ function renderAllForDebug(Q, sprite) {
 
 
 
+
+
 // -------------------------------
-// WebSocket stuff
+// for shine prototype/demo
 // -------------------------------
 
 function onMessage(event) {
@@ -272,4 +341,11 @@ function requestRunAlgorithm() {
 	var algoName = document.getElementById('txt_run_algorithm').value;
 	var worldName = document.getElementById('txt_run_on_world').value;
 	sendJson({request: "run algorithm", algorithmName: algoName, worldName: worldName})
+}
+
+
+// sends a batch of experience tuples to the server for storage in the ReplayMemory
+function requestAddExperience(world, buffer) {
+	sendJson({request: "add experience", "worldName": world, "experienceList": buffer})
+	//buffer.length = 0; // clear out buffer after sending
 }

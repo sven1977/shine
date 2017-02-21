@@ -285,7 +285,7 @@ Quintus.Scenes = function(Q) {
       this.grid = {};
       this._collisionLayers = [];
 
-      this.time = 0;
+      this.time = 0; // global stage time (increased each step by dt)
 
       this.defaults['w'] = Q.width;
       this.defaults['h'] = Q.height;
@@ -814,6 +814,7 @@ Quintus.Scenes = function(Q) {
       if(this.paused) { return false; }
 
       this.time += dt;
+
       this.markSprites(this.items,this.time);
 
       this.trigger("prestep",dt);

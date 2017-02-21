@@ -2264,7 +2264,8 @@ var Quintus = exportTarget[key] = function(opts) {
     if (!window.requestAnimationFrame) {
         window.requestAnimationFrame = function(callback, element) {
             var currTime = new Date().getTime();
-            var timeToCall = Math.max(0, 16 - (currTime - lastTime));
+            // roughly 60fps (1000ms / 16ms ~ 60fps)
+			var timeToCall = Math.max(0, 16 - (currTime - lastTime));
             var id = setTimeout(function() { callback(currTime + timeToCall); },
               timeToCall);
             lastTime = currTime + timeToCall;
