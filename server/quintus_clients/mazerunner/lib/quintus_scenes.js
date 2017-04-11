@@ -257,7 +257,7 @@ Quintus.Scenes = function(Q) {
   };
 
   /**
-   Base stage class, responsible for managing sets of sprites.
+   Base stage class, responsible for managing sets of game_objects.
 
    `Q.Stage`'s aren't generally instantiated directly, but rather are created
    automatically when you call `Q.stageScene('sceneName')`
@@ -508,7 +508,7 @@ Quintus.Scenes = function(Q) {
     },
 
     /**
-     Pauses the scene, sprites will no longer be stepped but still rendered.
+     Pauses the scene, game_objects will no longer be stepped but still rendered.
 
      @method pause
      @for Q.Stage
@@ -614,7 +614,7 @@ Quintus.Scenes = function(Q) {
 
     /**
      Finds any object that collides with the point x,y on the stage (not on the canvas).
-     If `collisionMask` is used, only checks for collisions with sprites of that type.
+     If `collisionMask` is used, only checks for collisions with game_objects of that type.
 
      @method locate
      @param {number} x
@@ -883,7 +883,7 @@ Quintus.Scenes = function(Q) {
 
       for(var i=0,len=this.items.length;i<len;i++) {
         var item = this.items[i];
-        // Don't render sprites with containers (sprites do that themselves)
+        // Don't render game_objects with containers (game_objects do that themselves)
         // Also don't render if not onscreen
         if(!item.container && (item.p.renderAlways || item.mark >= this.time)) {
           item.render(ctx);
@@ -1015,7 +1015,7 @@ Quintus.Scenes = function(Q) {
 
   /**
    Returns the default or currently active stage.
-   If called from a sprites step() returns the stage that the sprite is member of
+   If called from a game_objects step() returns the stage that the sprite is member of
    If a number is passed in, this stages is returned
    *Warning* might return `undefined` if that stage doesnt exist!
 

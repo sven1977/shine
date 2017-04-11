@@ -171,7 +171,7 @@ Quintus.Sprites = function(Q) {
 
 
   /**
-   Bitmask 0 to indicate no sprites
+   Bitmask 0 to indicate no game_objects
 
    @property Q.SPRITE_NONE
    @for Quintus.Sprites
@@ -675,9 +675,9 @@ Quintus.Sprites = function(Q) {
      @param {Float} dt - time elapsed since last call
     */
     update: function(dt) {
-      this.trigger('prestep',dt);
+      this.trigger('prestep', dt);
       if(this.step) { this.step(dt); }
-      this.trigger('step',dt);
+      this.trigger('step', dt);
       Q._generateCollisionPoints(this);
 
       // Ugly coupling to stage - workaround?

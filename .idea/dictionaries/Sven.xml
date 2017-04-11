@@ -3,14 +3,21 @@
     <words>
       <w>algo</w>
       <w>algos</w>
+      <w>anim</w>
+      <w>anims</w>
       <w>argmax</w>
       <w>asctime</w>
+      <w>blit</w>
+      <w>blits</w>
       <w>clientcallable</w>
+      <w>debind</w>
       <w>ducandu</w>
       <w>erver</w>
       <w>eural</w>
       <w>hyperparameters</w>
       <w>levelname</w>
+      <w>logits</w>
+      <w>lstm</w>
       <w>meth</w>
       <w>ntelligent</w>
       <w>nvironment</w>
@@ -19,13 +26,20 @@
       <w>pausable</w>
       <w>persistency</w>
       <w>pycache</w>
+      <w>pygame</w>
       <w>pyrate</w>
       <w>pyrateclientcallable</w>
       <w>resizes</w>
+      <w>rollout</w>
       <w>sars</w>
+      <w>softmax</w>
       <w>sourcerer</w>
+      <w>spritesheet</w>
       <w>tensorflow</w>
+      <w>tileset</w>
+      <w>tilesets</w>
       <w>uint</w>
+      <w>unpause</w>
       <w>upsert</w>
       <w>zodb</w>
     </words>

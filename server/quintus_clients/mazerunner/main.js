@@ -32,34 +32,29 @@ Q.input.mouseControls({cursor: "on"});
 SOCKET = 0;
 SEQ_NUM = 0; // our own seqNum
 SEQ_NUM_EXPECTED = 0; // expected seqNum by server
-BUTTON_LIST = ['btt_disconnect', 'btt_list_projects', 'btt_new_project', 'btt_get_project', 'btt_set_project', 'btt_new_world', 'btt_new_algorithm', 'btt_run_algorithm'];
+BUTTON_LIST = ['btt_disconnect', 'btt_list_projects', 'btt_new_project', 'btt_get_project', 'btt_set_project', 'btt_new_world', 'btt_new_algorithm'];
 CODE_ID = 0; // int: client-unique code Id
+AGENT = 0; // the single-agent of the game (the sprite that's controlled by shine)
+PROJECT_NAME = "";
+WORLD_NAME = "";
+ALGORITHM_NAME = "";
+CONNECTION = false;
 
 var _TILE_SIZE = 16,
     _PLAYER_SIZE = 16;
     Q._EMPTY_OBJ = {}; // a read-only(!) empty object to reuse (to avoid excessive garbage collection)
 
 
-_SCORE = 0;
-change_score(0);
-function change_score(delta) {
-	_SCORE += delta;
-	// update scoreboard
-	document.getElementById('debugtxt').innerHTML = "Score: "+_SCORE;
-}
-
 // translates an action number into a keyboard event
 function action_to_event(a) {
-	if (a <= 0) {
-        console.warn("WARNING: action a ("+a+") is <= 0!");
-    }
+	//if (a <= 0) {
+    //    console.warn("WARNING: action a ("+a+") is <= 0!");
+    //}
     return a == 1 ? 'up' : a == 2 ? 'right' : a == 3 ? 'down' : a == 4 ? 'left' : 'no-action';
 }
 
-// returns the current game state
-function get_state() {
-    return []; TODO
-}
+
+change_score(0);
 
 
 // -------------------------------------
@@ -74,76 +69,9 @@ function get_state() {
 Q.Sprite.extend("Player", {
 	init: function(p) {
 		this._super(p, { sheet: "player", gravity: 0 });
-		this.add('2d, stepControls');
-
-		this.on("walkonestep");
-		this.aiShutUpTimeout = 10; // sec after which the policy can take over again
-		this.aiFrameSkip = 4; // every how many frame should we act?
-		this.frameCount = 0; // some local frame counter (used for aiFrameSkip)
-		this.lastAiAction = -1; // -1 == none; 0=no action; 1=up, 2=right, 3=down, 4=left
-		this.qTable = QTable(5); // 5 actions
-		this.epsilon = 0.1;
-		this.epsilonMin = 0.01;
-		this.epsilonStep = 0.01;
-		this.policy = EpsilonGreedyPolicy(this.epsilon, this.qTable);
-
-		this.on("hit.sprite", function(collision) {
-			if(collision.obj.isA("Tower")) {
-				change_score(20);
-				//Q.stageScene("endGame", 1, { label: "You Won!" }); 
-				this.p.x = this.p.startX;//destroy();
-				this.p.y = this.p.startY;
-			}
-		});
+		this.add('2d, shineGridWorldControls');
 	},
-	// put the AI policy here
-	step: function(dt) {
-		// long time no human interaction -> we can do AI
-		if (Q.aiPolicyShutUp + 10000 < Date.now()) {
-			// are we in an n-th frame? (act only every n frames)
-			if (this.frameCount % this.aiFrameSkip == 0) {
-				// anneal epsilon
-				this.epsilon -= this.epsilonStep;
-				if (this.epsilon < this.epsilonMin) {
-					this.epsilon = this.epsilonMin;
-				}
-				// get the action
-				var a = this.policy.get_a(get_state());
-				// set Q.inputs
-				var direction = action_to_event(this.lastAiAction)
 
-				// if we are here the first time after a shutup, we have to set all events to false
-				if (this.lastAiAction == -1) {
-					for (var dir in ['up', 'down', 'left', 'right']) {
-						Q.inputs[event] = false;
-                    }
-				}
-				// otherwise, only set the this.lastAiAction to false
-				else if (this.lastAiAction > 0) {
-					Q.inputs[action_to_event(this.lastAiAction)] = false;
-				}
-
-				// remember last action for next time
-				this.lastAiAction = a;
-				// and set the correct direction in the inputs
-				if (a > 0) {
-					Q.inputs[direction] = true;
-				}
-			}
-		}
-		// first time we run step with being shutUp
-		else if (this.lastAiAction >= 0) {
-			// erase last action (if there was any)
-			if (this.lastAiAction != 0) {
-				Q.inputs[action_to_event(this.lastAiAction)] = false;
-            }
-			this.lastAiAction = -1; // reset our lastAction marker
-		}
-	},
-	walkonestep: function(e) {
-		change_score(-1);
-		return e;
-	}
 });
 
 
@@ -160,13 +88,13 @@ Q.Sprite.extend("Tower", {
 // create a scene
 Q.scene("level1", function(stage) {
 	stage.collisionLayer(new Q.TileLayer({ dataAsset: 'level.json', sheet: 'tiles' }));
-	var player = stage.insert(new Q.Player({ startX: 64, x: 64, startY: 32, y: 32 }));
+	AGENT = stage.insert(new Q.Player({ startX: (0+1)*32+16, x: (0+1)*32+16, startY: (0+1)*32+16, y: (0+1)*32+16 }));
 
 	stage.add("viewport");//.follow(player);
 
 	//stage.insert(new Q.Enemy({ x: 700, y: 0 }));
 	//stage.insert(new Q.Enemy({ x: 800, y: 0 }));
-	stage.insert(new Q.Tower({ x: 272, y: 178 }));
+	stage.insert(new Q.Tower({ x: (AGENT.p.shineControls.goalState[0]+1)*32+16, y: (AGENT.p.shineControls.goalState[1]+1)*32+16 }));
 });
 
 // end of game scene
@@ -187,7 +115,7 @@ Q.scene('endGame', function(stage) {
 
 
 // start the game (load assets, stage the scene)
-Q.load("sprites.png, sprites.json, level.json, tiles.png", function() {
+Q.load("sprites.png, game_objects.json, level.json, tiles.png", function() {
 	Q.sheet("tiles", "tiles.png", { tilew: 32, tileh: 32 });
 	Q.compileSheets("sprites.png", "sprites.json");
 	Q.stageScene("level1");
@@ -230,8 +158,8 @@ function renderAllForDebug(Q, sprite) {
 // -------------------------------
 
 function onMessage(event) {
-	json = event.data;
-	jsonObj = JSON.parse(json);
+	var json = event.data;
+	var jsonObj = JSON.parse(json);
 	if (jsonObj.seqNum != SEQ_NUM_EXPECTED) {
 		console.log("ERROR: seq num from server ("+jsonObj.seqNum+") incorrect! Expected "+SEQ_NUM_EXPECTED+"!")
 	}
@@ -247,13 +175,35 @@ function onMessage(event) {
 		if (jsonObj.errMsg) {
 			alert(jsonObj.errMsg);
 		}
+		// confirmed new project
+		else if (jsonObj.response == "new project created") {
+			PROJECT_NAME = jsonObj.projectName;
+		}
+		// confirmed new world
+		else if (jsonObj.response == "new world created") {
+			WORLD_NAME = jsonObj.worldName;
+		}
+		// confirmed new algorithm
+		else if (jsonObj.response == "new algorithm created") {
+			ALGORITHM_NAME = jsonObj.algorithmName;
+		}
 	}
 	else if (jsonObj.msgType == "notify") {
 		if (jsonObj.errMsg) {
-			alert(jsonObj.errMsg);
+			console.error(jsonObj.errMsg);
 		}
+		// a successful login
 		else if (jsonObj.notify == "welcome") {
-			alert("Successfully logged in!");
+			CONNECTION = true;
+			console.log("Successfully logged in!");
+		}
+		// a q-table update coming down
+		else if (jsonObj.notify == "q-table sync") {
+			AGENT.p.shineControls.qTable.set_table(jsonObj["qTable"]);
+		}
+		// a progress report -> for now just log
+		else if (jsonObj.notify == "algo progress") {
+			//console.log("Algo progress: "+jsonObj["pct"]+"%");
 		}
 	}
 }
@@ -280,11 +230,15 @@ function connect() {
 	SOCKET.onclose = function(event) {
 		console.log("Connection to server was closed!");
 		resetButtons();
+		CONNECTION = false;
+		PROJECT_NAME = "";
+		WORLD_NAME = "";
+		ALGORITHM_NAME = "";
 	};
 }
 
 function responseHello() {
-	json = {response : "hello", userName: "sven", password: "123456", "protocolVersion" : 1};
+	var json = {response : "hello", userName: "sven", password: "123456", "protocolVersion" : 1};
 	sendJson(json);
 }
 
@@ -334,18 +288,27 @@ function requestNewWorld() {
 
 function requestNewAlgorithm() {
 	var algoName = document.getElementById('txt_new_algorithm').value;
-	sendJson({request: "new algorithm", algorithmName: algoName})
+	var algoClass = document.getElementById('txt_algorithm_class').value;
+	sendJson({request: "new algorithm", algorithmName: algoName, algorithmClass: algoClass, numActions: 5})
 }
 
-function requestRunAlgorithm() {
+function requestRunAlgorithm(options) {
 	var algoName = document.getElementById('txt_run_algorithm').value;
-	var worldName = document.getElementById('txt_run_on_world').value;
-	sendJson({request: "run algorithm", algorithmName: algoName, worldName: worldName})
+	console.log("Sending run request to server");
+	sendJson({request: "run algorithm", algorithmName: algoName, options: options})
 }
 
 
 // sends a batch of experience tuples to the server for storage in the ReplayMemory
-function requestAddExperience(world, buffer) {
-	sendJson({request: "add experience", "worldName": world, "experienceList": buffer})
+function requestAddExperience(algo, buffer) {
+	sendJson({request: "add experience", "algorithmName": algo, "experienceList": buffer})
 	//buffer.length = 0; // clear out buffer after sending
+}
+
+function resetLocalPolicy() {
+	if (AGENT) {
+		var shine = AGENT.p.shine;
+		shine.qTable.set_table({});
+		shine.epsilon = 1.0; // start epsilon
+	}
 }

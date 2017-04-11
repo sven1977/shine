@@ -10,6 +10,48 @@ concerns itself with game-type (pretty anything besides touchscreen input)
 */
 
 
+// returns the current game state (use x/y coordinates of the agent to calculate our tile-wise x/y)
+function get_state(agent) {
+	if (! agent) {
+	    agent = AGENT;
+    }
+    // simple x,y state
+	// OBSOLETE: use destX/Y istead of current x/y as this is the position that we definitely will be (after the stepWait interval)
+    var x = parseInt((agent.p.x - 20) / 32);
+    var y = parseInt((agent.p.y - 20) / 32);
+	return [x == 8 ? 7 : x, y == 8 ? 7 : y];
+}
+
+
+// converts a state array (e.g. [1, 2]) into a python-tuple-string (e.g. "(1, 2)")
+function state_to_str(s) {
+	var ret = "("+s[0];
+	if (s.length > 1) {
+		for (var i = 1, l = s.length; i < l; ++i) {
+			ret += ", "+s[i];
+		}
+	}
+	return ret+")";
+}
+
+
+var _SCORE = 0; // total accumulated score
+var _AVG_SCORE = 0; // average score per episode
+var _NUM_EPISODES = 0;
+function change_score(delta) {
+	_SCORE += delta;
+	// update scoreboard
+	document.getElementById('displ_total_reward').innerHTML = _SCORE;
+}
+
+
+function episode_done() {
+    _NUM_EPISODES++;
+    _AVG_SCORE = _SCORE / _NUM_EPISODES;
+	document.getElementById('displ_avg_reward').innerHTML = _AVG_SCORE.toFixed(2);
+}
+
+
 var quintusInput = function(Quintus) { 
 "use strict";
 
@@ -893,6 +935,200 @@ Quintus.Input = function(Q) {
   });
 
 
+
+  // shine gridworld controls
+  Q.component("shineGridWorldControls", {
+
+    added: function() {
+      var p = this.entity.p;
+      // initialize this component with encapsulation
+      p.shineControls = {};
+      var shine = p.shineControls;
+
+      shine.aiShutUpTimeout = 5; // sec after which the policy can take over again
+      shine.aiFrameSkip = 4; // every how many frames should we AI act?
+      shine.frameCount = 0; // some local frame counter (used for aiFrameSkip)
+      //shine.lastAiAction = -1; // -1 == none; 0=no action; 1=up, 2=right, 3=down, 4=left
+      shine.qTable = new QTable(5); // 5 actions
+      shine.epsilon = 1.0; // start epsilon
+      shine.epsilonMin = 0.0; // the minimum epsilon to use, ever
+      shine.epsilonStep = 0.0004; // step by which we reduce epsilon each iteration
+      shine.policy = new EpsilonGreedyPolicy(shine.epsilon, shine.qTable);
+      shine.sarsBuffer = new SARSBuffer(50); // store max 50 items before pushing them down
+      // gets called by the SARS buffer when "full"
+      // - sends entire buffer to server and empties the buffer
+      shine.sarsBuffer.register_full_handler(function(sars_buffer) {
+            // only send if we have a connection and an algorithm,
+	        // otherwise discard our buffer (can't do anything with the data)
+            if (ALGORITHM_NAME != "" && CONNECTION == true) {
+                requestAddExperience(ALGORITHM_NAME, sars_buffer.buffer);
+                console.log("Sending "+sars_buffer.buffer.length+" sars items to server.");
+            }
+            sars_buffer.empty();
+      });
+      shine.sars = [get_state(this.entity)]; // the current sars tuple to complete (before we can add it to our buffer)
+      shine.goalState = [7, 4]; // x,y of the goal state
+      //shine.isTerminated = false; // did we just terminate an episode?
+      shine.a = 0;
+
+      if(!p.stepDistance) { p.stepDistance = 32; }
+      if(!p.stepDelay) { p.stepDelay = 0.2; }
+
+      p.xMin = p.yMin = 10;
+      p.xMax = p.yMax = 280;
+      p.stepWait = 0;
+      p.destX = p.x
+      p.destY = p.y
+
+      // component's step method is called AFTER sprite's (entity's) step method
+      this.entity.on("step", this, "step");
+      this.entity.on("hit", this, "collision");
+    },
+
+    collision: function(col) {
+      var p = this.entity.p;
+      var shine = p.shineControls;
+
+      // we are done with this episode
+      if(col.obj.isA("Tower")) {
+          //Q.stageScene("endGame", 1, { label: "You Won!" });
+          p.x = p.destX = p.startX;//destroy();
+          p.y = p.destY = p.startY;
+          // TODO: add terminal state signal here (e.g. (s=6,4 should not transition into 0,0, but into some terminal state (e.g. -1,-1), with value 0))
+          this.process_sars(shine.a, 100, get_state());
+          p.stepping = false;
+          episode_done();
+      }
+      // we collided with a wall
+      else if(p.stepping) {
+        p.stepping = false;
+        p.x = p.destX = p.origX;
+        p.y = p.destY = p.origY;
+        this.process_sars(shine.a, -1, get_state());
+      }
+    },
+
+    process_sars: function(a, r, s_){
+        change_score(r);
+        var shine = this.entity.p.shineControls;
+	    if (shine.sars.length == 1) {
+            //console.log("finishing old sars: s="+shine.sars[0]+" a="+a+" r="+LAST_REWARD+" s'="+s_);
+	    	shine.sars.push(a, r, s_);
+            shine.sarsBuffer.add_item(shine.sars);
+		}
+	    else {
+	        console.error("ERROR: sars tuple is not of length 1!");
+        }
+
+		// start a new sars tuple
+        //console.log("starting new sars: s="+s_);
+        shine.sars = [s_];
+    },
+    step: function(dt) {
+      var p = this.entity.p;
+      var shine = p.shineControls;
+      shine.frameCount++; // increase frameCounter
+
+      // are we AI controlled or keyboard controlled?
+      var doFrame = (shine.frameCount % shine.aiFrameSkip == 0);
+      var doAI = (Q.aiPolicyShutUp + (shine.aiShutUpTimeout * 1000) < Date.now());
+
+      // still within stepWait time: smooth stepping part
+      p.stepWait -= dt;
+      if(p.stepping) {
+        p.x += p.diffX * dt / p.stepDelay;
+        p.y += p.diffY * dt / p.stepDelay;
+      }
+      if(p.stepWait > 0) { return; }
+      // end: smooth stepping part
+
+      // outside of stepWait time: finish the step in one single leap (right now)
+      if(p.stepping) {
+        p.x = p.destX;
+        p.y = p.destY;
+        // signal: not in smooth stepping part anymore (step done)
+        p.stepping = false;
+        // process this SARS tuple
+        this.process_sars(shine.a, 0, get_state());
+      }
+
+      if (doAI) {
+          p.stepDelay = 0.07; // very fast AI
+          var s = get_state(); // get state right now (just to pull action from policy)
+          shine.epsilon -= shine.epsilonStep;
+          if (shine.epsilon < shine.epsilonMin) {
+            shine.epsilon = shine.epsilonMin;
+          }
+          document.getElementById("displ_epsilon").innerHTML = shine.epsilon.toFixed(4);
+          shine.a = shine.policy.get_a(state_to_str(s), shine.epsilon);
+      }
+      // manual
+      else {
+          p.stepDelay = 0.2;
+
+          shine.a = 0;
+          // arrow keys pressed
+          if (Q.inputs['left']) {
+              shine.a = 4;
+          }
+          else if (Q.inputs['right']) {
+              shine.a = 2;
+          }
+          else if (Q.inputs['up']) {
+              shine.a = 1;
+          }
+          else if (Q.inputs['down']) {
+              shine.a = 3;
+          }
+      }
+
+      // special case: do nothing -> process sars right here as we will not do any stepping
+      if (shine.a == 0) {
+          this.process_sars(shine.a, 0, get_state());
+      }
+      else {
+          // determine diffX/Y
+          p.diffX = 0;
+          p.diffY = 0;
+          if (shine.a == 1) {
+              p.diffY = -p.stepDistance;
+          }
+          else if (shine.a == 2) {
+              p.diffX = p.stepDistance;
+          }
+          else if (shine.a == 3) {
+              p.diffY = p.stepDistance;
+          }
+          else if (shine.a == 4) {
+              p.diffX = -p.stepDistance;
+          }
+
+          // set x/y directly to new position (+stepDistance)
+          if (p.diffY || p.diffX) {
+              p.stepping = true; // we start stepping ...
+              //shine.currentStep = shine.frameCount;
+              p.origX = p.x;
+              p.origY = p.y;
+              p.destX = p.x + p.diffX;
+              p.destY = p.y + p.diffY;
+
+              //console.log("y="+p.destY);
+
+              // put some boundaries here so the agent cannot leave the maze
+              if (p.destX < p.xMin) p.destX = p.xMin;
+              if (p.destX > p.xMax) p.destX = p.xMax;
+              if (p.destY < p.yMin) p.destY = p.yMin;
+              if (p.destY > p.yMax) p.destY = p.yMax;
+
+              p.stepWait = p.stepDelay;
+          }
+      }
+    }
+
+  });
+
+
+
   /**
    * Step Controls component
    *
@@ -915,9 +1151,13 @@ Quintus.Input = function(Q) {
       var p = this.entity.p;
 
       if(!p.stepDistance) { p.stepDistance = 32; }
-      if(!p.stepDelay) { p.stepDelay = 0.1; }
+      if(!p.stepDelay) { p.stepDelay = 0.2; }
 
       p.stepWait = 0;
+      p.destX = p.x
+      p.destY = p.y
+
+      // component's step method is called AFTER sprite's (entity's) step method
       this.entity.on("step",this,"step");
       this.entity.on("hit", this,"collision");
     },
@@ -936,19 +1176,25 @@ Quintus.Input = function(Q) {
     step: function(dt) {
       var p = this.entity.p,
           moved = false;
-      p.stepWait -= dt;
+      var shine = this.entity.p.shine;
 
+      // still within stepWait time: smooth stepping part
+      p.stepWait -= dt;
       if(p.stepping) {
         p.x += p.diffX * dt / p.stepDelay;
         p.y += p.diffY * dt / p.stepDelay;
       }
-
       if(p.stepWait > 0) { return; }
+      // end: smooth stepping part
+
+      // outside of stepWait time: finish the step in one single leap (right now)
       if(p.stepping) {
         p.x = p.destX;
         p.y = p.destY;
+        // signal: not in smooth stepping part anymore (step done)
+        p.stepping = false;
+        shine.a = 0;
       }
-      p.stepping = false;
 
       p.diffX = 0;
       p.diffY = 0;
@@ -956,30 +1202,37 @@ Quintus.Input = function(Q) {
       // arrow keys pressed
       if(Q.inputs['left']) {
         p.diffX = -p.stepDistance;
+        shine.a = 4;
       }
       else if(Q.inputs['right']) {
          p.diffX = p.stepDistance;
+         shine.a = 2;
       }
       else if(Q.inputs['up']) {
         p.diffY = -p.stepDistance;
+        shine.a = 1;
       }
       else if(Q.inputs['down']) {
         p.diffY = p.stepDistance;
+        shine.a = 3;
       }
 
       if (p.diffY || p.diffX) {
-		p.stepping = true;
+		p.stepping = true; // we start stepping ...
+        shine.currentStep = shine.frameCount;
         p.origX = p.x;
         p.origY = p.y;
         p.destX = p.x + p.diffX;
         p.destY = p.y + p.diffY;
         p.stepWait = p.stepDelay;
-        this.entity.trigger("walkonestep");
       }
-
     }
 
   });
+
+
+
+
 };
 
 

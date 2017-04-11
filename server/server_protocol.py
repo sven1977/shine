@@ -24,6 +24,7 @@ from autobahn.twisted.websocket import WebSocketServerProtocol, WebSocketServerF
 import json  # our format for messaging
 import server_config as conf  # PyRATE TCP server config
 import shine
+import sys
 
 
 # used for internal protocol related errors whose message text should not be communicated back to the client
@@ -185,10 +186,10 @@ class Project(object):  # persistent.Persistent):
         assert algo_name in self.algorithms
         if event == "progress":
             assert "pct" in obj, "no 'pct' field in object in algo-callback (event=progress)!"
-            self._v_ShineProtocol.sendJson({"notify": "progress", "pct": obj["pct"], "projectName": self.name, "algorithm": algo_name})
-        elif event == "qTable":
+            self._v_ShineProtocol.send_json({"notify": "algo progress", "pct": obj["pct"], "projectName": self.name, "algorithm": algo_name})
+        elif event == "qTableSync":
             assert "qTable" in obj, "no 'qTable' field in object in algo-callback (event=qTable)!"
-            self._v_ShineProtocol.sendJson({"notify": "q-table update", "qTable": obj["qTable"], "projectName": self.name, "algorithm": algo_name})
+            self._v_ShineProtocol.send_json({"notify": "q-table sync", "qTable": obj["qTable"], "projectName": self.name, "algorithm": algo_name})
 
 
 class ShineProtocol(WebSocketServerProtocol):
@@ -218,14 +219,15 @@ class ShineProtocol(WebSocketServerProtocol):
     }
 
     # some error codes for protocol errors
-    PROTOCOL_ERROR_FIELD_MISSING = 0
-    PROTOCOL_ERROR_FIELD_ZERO_LENGTH = 1
-    PROTOCOL_ERROR_FIELD_TOO_LONG = 2
-    PROTOCOL_ERROR_ITEM_ALREADY_EXISTS = 3
-    PROTOCOL_ERROR_ITEM_DOESNT_EXIST = 4
-    PROTOCOL_ERROR_FIELD_HAS_WRONG_TYPE = 5
-    PROTOCOL_ERROR_INVALID_FIELD_VALUE = 6
-    PROTOCOL_ERROR_CUSTOM = 100
+    PROTOCOL_ERROR_FIELD_MISSING = 0            # a mandatory field is missing in the message
+    PROTOCOL_ERROR_FIELD_ZERO_LENGTH = 1        # a mandatory field has a zero-length value
+    PROTOCOL_ERROR_FIELD_TOO_LONG = 2           # a field has a value that is too long
+    PROTOCOL_ERROR_ITEM_ALREADY_EXISTS = 3      # a new item is requested (e.g. world), but it already exists
+    PROTOCOL_ERROR_ITEM_DOESNT_EXIST = 4        # an item (e.g. world) is needed to complete this request, but the item does not exist
+    PROTOCOL_ERROR_FIELD_HAS_WRONG_TYPE = 5     # a field has a wrong data type
+    PROTOCOL_ERROR_INVALID_FIELD_VALUE = 6      # a field's value is invalid/has an invalid format
+    PROTOCOL_ERROR_NO_PROJECT_SET = 7           # a project is needed to complete this request, but none is currently set
+    PROTOCOL_ERROR_CUSTOM = 100                 # a custom error
 
     # give each protocol instance the protocol-factory for access to persistent state information
     def __init__(self, _id: int, factory: WebSocketServerFactory, reactor):
@@ -240,7 +242,8 @@ class ShineProtocol(WebSocketServerProtocol):
         self.gotHelloResponse = False  # did we already get the hello response?
         self.clientProtocolVersion = None  # the client's pyrate protocol version
         self.userName = None  # the username of the connected client
-        self.userRecord = None  # user-specific DB record being looked up after login (it's basically a dict with the project names as keys and the (DB-stored) project objects as values)
+        self.userRecord = None  # user-specific DB record being looked up after login (it's basically a dict with the project names as keys and the
+                                # (DB-stored) project objects as values)
         self.currentProject = None  # the currently active project
 
     # initialize our state stuff for this connection only
@@ -305,7 +308,9 @@ class ShineProtocol(WebSocketServerProtocol):
             except ShineProtocolClientMessageError as e:
                 return self.send_json({"response": "error", "errMsg": str(e)})
             except Exception as e:
-                return self.abort("Unknown Error (msg #{:d}): Client-request message handler threw error {:s}: {:s}!\n".format(json_obj["seqNum"], type(e).__name__, str(e)))
+                self.abort("Unknown Error (msg #{:d}): Client-request message handler threw error {:s}: {:s}!\n".
+                           format(json_obj["seqNum"], type(e).__name__, str(e)))
+                raise  # re-raise this unknown error
         elif json_obj["msgType"] == "response":
             try:
                 self.handle_response(json_obj)
@@ -316,7 +321,8 @@ class ShineProtocol(WebSocketServerProtocol):
                 return self.send_json({"notify": "error", "errMsg": str(e)})
             # terminate
             except Exception as e:
-                return self.abort("Unknown Error (msg #%d): Client-response message handler threw error: %s!\n" % (json_obj["seqNum"], str(e)))
+                self.abort("Unknown Error (msg #%d): Client-response message handler threw error: %s!\n" % (json_obj["seqNum"], str(e)))
+                raise  # re-raise this unknown error
         return
 
     def sanity_check_incoming_json(self, json_obj):
@@ -346,7 +352,8 @@ class ShineProtocol(WebSocketServerProtocol):
                 elif err == ShineProtocol.PROTOCOL_ERROR_FIELD_ZERO_LENGTH:
                     error_message = "Protocol Error (msg #{:d}): Field '{:s}' has zero-length!".format(json_obj["seqNum"], check[3])
                 elif err == ShineProtocol.PROTOCOL_ERROR_FIELD_TOO_LONG:
-                    error_message = "Protocol Error (msg #{:d}): Field '{:s}' is too long (allowed are max. {:d} chars!".format(json_obj["seqNum"], check[3], check[4])
+                    error_message = "Protocol Error (msg #{:d}): Field '{:s}' is too long (allowed are max. {:d} chars!".\
+                        format(json_obj["seqNum"], check[3], check[4])
                 elif err == ShineProtocol.PROTOCOL_ERROR_ITEM_DOESNT_EXIST:
                     error_message = "Protocol Error (msg #{:d}): '{:s}' doesn't exist in {:s}!".format(json_obj["seqNum"], check[3], check[4])
                 elif err == ShineProtocol.PROTOCOL_ERROR_ITEM_ALREADY_EXISTS:
@@ -354,16 +361,18 @@ class ShineProtocol(WebSocketServerProtocol):
                 elif err == ShineProtocol.PROTOCOL_ERROR_FIELD_HAS_WRONG_TYPE:
                     error_message = "Protocol Error (msg #{:d}): Field '{:s}' has a wrong type. {:s} expected!".format(json_obj["seqNum"], check[3], check[4])
                 elif err == ShineProtocol.PROTOCOL_ERROR_INVALID_FIELD_VALUE:
-                    error_message = "Protocol Error (msg #{:d}): Unknown response %s from client!".format(check[3])
+                    error_message = "Protocol Error (msg #{:d}): Bad field value in field '{}'!".format(json_obj["seqNum"], check[3])
+                elif err == ShineProtocol.PROTOCOL_ERROR_NO_PROJECT_SET:
+                    error_message = "Protocol Error (msg #{:d}): {:s} No Project currently set!".format(json_obj["seqNum"], check[3])
                 elif err == ShineProtocol.PROTOCOL_ERROR_CUSTOM:
                     error_message = "Protocol Error (msg #{:d}): {:s}".format(json_obj["seqNum"], check[3])
 
                 # serious error: drop the connection immediately
                 if is_abort:
                     self.abort(error_message)
-                # harmless protocol error -> keep connection
+                # harmless protocol error -> keep connection but interrupt the current call stack
                 else:
-                    raise (Exception(error_message))
+                    raise(ShineProtocolClientMessageError(error_message))
 
     # handles all types of client request messages and takes care of answering these requests with a "response"
     # - throws exception if suspicious behavior is detected
@@ -378,7 +387,8 @@ class ShineProtocol(WebSocketServerProtocol):
             # no request field
             ("request" in json_obj, ShineProtocol.PROTOCOL_ERROR_FIELD_MISSING, False, "request"),
             # an unknown request
-            (json_obj["request"] in ShineProtocol.protocolRequestLookup, ShineProtocol.PROTOCOL_ERROR_CUSTOM, False, "Unknown request ({:s}) from client!".format(json_obj["request"])),
+            (json_obj["request"] in ShineProtocol.protocolRequestLookup, ShineProtocol.PROTOCOL_ERROR_CUSTOM, False, "Unknown request ({:s}) from client!".
+                format(json_obj["request"])),
         ])
 
         # call the respective handler looked up in ProtocolRequestLookup
@@ -398,8 +408,9 @@ class ShineProtocol(WebSocketServerProtocol):
             ("projectName" in json_obj, ShineProtocol.PROTOCOL_ERROR_FIELD_MISSING, False, "projectName"),
             (len(json_obj["projectName"]) > 0, ShineProtocol.PROTOCOL_ERROR_FIELD_ZERO_LENGTH, False, "projectName"),
             (len(json_obj["projectName"]) <= conf.SHINE_SERVER_MAX_LEN_PROJECT_NAME, ShineProtocol.PROTOCOL_ERROR_FIELD_TOO_LONG, False, "projectName",
-             conf.SHINE_SERVER_MAX_LEN_PROJECT_NAME),
-            (json_obj["projectName"] not in self.userRecord.projects, ShineProtocol.PROTOCOL_ERROR_ITEM_ALREADY_EXISTS, False, "projectName {:s}".format(json_obj["projectName"]), "your user account"),
+                conf.SHINE_SERVER_MAX_LEN_PROJECT_NAME),
+            (json_obj["projectName"] not in self.userRecord.projects, ShineProtocol.PROTOCOL_ERROR_ITEM_ALREADY_EXISTS, False, "projectName {:s}".
+                format(json_obj["projectName"]), "your user account"),
         ])
 
         # generate the new project in our userRecord
@@ -422,8 +433,8 @@ class ShineProtocol(WebSocketServerProtocol):
 
         project_name = json_obj["projectName"]
         if project_name not in self.userRecord.projects:
-            return self.send_json({"response": "error", "errMsg": "Protocol Error (msg #{:d}): given project name ({:s}) does not exist in your user account!".format(
-                json_obj["seqNum"], project_name)})
+            return self.send_json({"response": "error", "errMsg": "Protocol Error (msg #{:d}): given project name ({:s}) does not exist in your user account!".
+                                  format(json_obj["seqNum"], project_name)})
 
         # get existing Project from userRecord
         project = self.userRecord.projects[project_name]
@@ -451,16 +462,14 @@ class ShineProtocol(WebSocketServerProtocol):
 
     # creates a new world (+ReplayMemory)
     def request_new_world(self, json_obj):
-        try:
-            self.sanity_check_message(json_obj, [
-                ("worldName" in json_obj, ShineProtocol.PROTOCOL_ERROR_FIELD_MISSING, False, "worldName"),
-                (len(json_obj["worldName"]) > 0, ShineProtocol.PROTOCOL_ERROR_FIELD_ZERO_LENGTH, False, "worldName"),
-                (len(json_obj["worldName"]) <= conf.SHINE_SERVER_MAX_LEN_WORLD_NAME, ShineProtocol.PROTOCOL_ERROR_FIELD_TOO_LONG, False, "worldName",
-                    conf.SHINE_SERVER_MAX_LEN_WORLD_NAME),
-                (json_obj["worldName"] not in self.currentProject.worlds, ShineProtocol.PROTOCOL_ERROR_ITEM_ALREADY_EXISTS, False, json_obj["worldName"], "project {:s}".format(self.currentProject.name))
-            ])
-        except ShineProtocolClientMessageError as e:
-            return self.send_json({"response": "error", "errMsg": str(e)})
+        self.sanity_check_message(json_obj, [
+            ("worldName" in json_obj, ShineProtocol.PROTOCOL_ERROR_FIELD_MISSING, False, "worldName"),
+            (len(json_obj["worldName"]) > 0, ShineProtocol.PROTOCOL_ERROR_FIELD_ZERO_LENGTH, False, "worldName"),
+            (len(json_obj["worldName"]) <= conf.SHINE_SERVER_MAX_LEN_WORLD_NAME, ShineProtocol.PROTOCOL_ERROR_FIELD_TOO_LONG, False, "worldName",
+                conf.SHINE_SERVER_MAX_LEN_WORLD_NAME),
+            (json_obj["worldName"] not in self.currentProject.worlds, ShineProtocol.PROTOCOL_ERROR_ITEM_ALREADY_EXISTS, False, json_obj["worldName"],
+                "project {:s}".format(self.currentProject.name))
+        ])
 
         # generate the new project in our userRecord
         world_name = json_obj["worldName"]
@@ -468,85 +477,107 @@ class ShineProtocol(WebSocketServerProtocol):
         self.currentProject.worlds[world_name] = shine.World(world_name, 2, 5)  # for now: maze-runner s=(x,y), a=4 directions + do-nothing
         return self.send_json({"response": "new world created", "worldName": world_name})
 
-    # adds a batch of experience from the client to some ReplayMemory in a world
-    def request_add_experience(self, json_obj):
-        try:
-            self.sanity_check_message(json_obj, [
-                ("worldName" in json_obj, ShineProtocol.PROTOCOL_ERROR_FIELD_MISSING, False, "worldName"),
-                (json_obj["worldName"] in self.currentProject.worlds, ShineProtocol.PROTOCOL_ERROR_ITEM_DOESNT_EXIST, False, json_obj["worldName"], "current project"),
-                ("experienceList" in json_obj, ShineProtocol.PROTOCOL_ERROR_FIELD_MISSING, False, "experienceList"),
-                (isinstance(json_obj["experienceList"], list), ShineProtocol.PROTOCOL_ERROR_FIELD_HAS_WRONG_TYPE, False, "experienceList", "list"),
-            ])
-        except ShineProtocolClientMessageError as e:
-            return self.send_json({"response": "error", "errMsg": str(e)})
-
-        world_name = json_obj["worldName"]
-        # type checking of single items
-        client_items = json_obj["experienceList"]
-        experiences = []  # will be added to the ReplayMemory
-        try:
-            for i, item in enumerate(client_items):
-                self.sanity_check_message(json_obj, [
-                    (isinstance(item, list), ShineProtocol.PROTOCOL_ERROR_FIELD_HAS_WRONG_TYPE, "{:d} in experienceList", False, "tuple"),
-                ])
-                experiences.append(item)
-        except ShineProtocolClientMessageError as e:
-            return self.send_json({"response": "error", "errMsg": str(e)})
-
-        self.currentProject.worlds[world_name].replayMemory.add_items(client_items)
-
-    # TODO: resets an existing world (+ReplayMemory)
-    # def request_reset_world(self, json_obj):
-    #    pass
-
     # creates a new algorithm in this project
     def request_new_algorithm(self, json_obj):
-        # TODO: right now, the only algo we know is tabular q-learning, so we create just that, but in the future, we have to add more options to this message
         # TODO: write function for protocol to check given JSON params against internal shine function- and method-signatures
-        try:
-            self.sanity_check_message(json_obj, [
-                ("algorithmName" in json_obj, ShineProtocol.PROTOCOL_ERROR_FIELD_MISSING, False, "algorithmName"),
-                (len(json_obj["algorithmName"]) > 0, ShineProtocol.PROTOCOL_ERROR_FIELD_ZERO_LENGTH, False, "algorithmName"),
-                (len(json_obj["algorithmName"]) <= conf.SHINE_SERVER_MAX_LEN_WORLD_NAME, ShineProtocol.PROTOCOL_ERROR_FIELD_TOO_LONG, False, "algorithmName",
-                    conf.SHINE_SERVER_MAX_ALGORITHM_NAME),
-                (json_obj["algorithmName"] not in self.currentProject.algorithms, ShineProtocol.PROTOCOL_ERROR_ITEM_ALREADY_EXISTS, json_obj["algorithmName"], False, "project {:s}".format(self.currentProject.name))
+        self.sanity_check_message(json_obj, [
+            ("algorithmClass" in json_obj, ShineProtocol.PROTOCOL_ERROR_FIELD_MISSING, False, "algorithmClass"),
             ])
-        except ShineProtocolClientMessageError as e:
-            return self.send_json({"response": "error", "errMsg": str(e)})
+        algo_class = json_obj["algorithmClass"]
+        self.sanity_check_message(json_obj, [
+            (hasattr(sys.modules['shine'], algo_class) and issubclass(getattr(sys.modules['shine'], algo_class), shine.Algorithm),
+                ShineProtocol.PROTOCOL_ERROR_INVALID_FIELD_VALUE, False, "algorithmClass"),
+            ("algorithmName" in json_obj, ShineProtocol.PROTOCOL_ERROR_FIELD_MISSING, False, "algorithmName"),
+            ])
+        algo_name = json_obj["algorithmName"]
+        self.sanity_check_message(json_obj, [
+            (len(algo_name) > 0, ShineProtocol.PROTOCOL_ERROR_FIELD_ZERO_LENGTH, False, "algorithmName"),
+            (len(algo_name) <= conf.SHINE_SERVER_MAX_LEN_WORLD_NAME, ShineProtocol.PROTOCOL_ERROR_FIELD_TOO_LONG, False, "algorithmName",
+                conf.SHINE_SERVER_MAX_ALGORITHM_NAME),
+            (algo_name not in self.currentProject.algorithms, ShineProtocol.PROTOCOL_ERROR_ITEM_ALREADY_EXISTS, False, algo_name,
+                "project {:s}".format(self.currentProject.name)),
+            ("numActions" in json_obj, ShineProtocol.PROTOCOL_ERROR_FIELD_MISSING, False, "numActions"),
+            ])
+        num_actions = json_obj["numActions"]
+        self.sanity_check_message(json_obj, [
+            (isinstance(num_actions, int), ShineProtocol.PROTOCOL_ERROR_FIELD_HAS_WRONG_TYPE, False, "numActions", "int"),
+            (num_actions > 1, ShineProtocol.PROTOCOL_ERROR_INVALID_FIELD_VALUE, False, "numActions"),
+        ])
 
         # generate the new project in our userRecord
-        algo_name = json_obj["algorithmName"]
-        self.currentProject.algorithms[algo_name] = shine.SimpleQLearner(algo_name, self.currentProject.algorithm_callback)
-        return self.send_json({"response": "new algorithm created", "algorithmName": algo_name})
+        algo = getattr(sys.modules['shine'], algo_class)(algo_name, self.currentProject.algorithm_callback)
+
+        # TODO: replace these calls with "set hyperparameters" (this is hardcoded right now to a certain algorithm)
+        algo.qFunction = shine.QTable(num_actions)
+        algo.model = shine.TabularDeterministicWorldModel(num_actions)
+
+        self.currentProject.algorithms[algo_name] = algo
+        return self.send_json({"response": "new algorithm created", "algorithmName": algo_name, "algorithmClass": algo_class})
 
     # # TODO: sets the hyper-parameters (or some initialization features) for this algorithm
     # def request_setup_algorithm(self, json_obj):
     #    # TODO: assert: name exists in project, hyper-parameters ok
     #    pass
 
-    # runs an algorithm on a world
-    # TODO: for now: give a callback (a method of this Protocol) to the algo so we get called whenever the algo reaches some progress, is done, etc..
-    def request_run_algorithm(self, json_obj):
+    # adds a batch of experience from the client to some ReplayMemory in a world
+    def request_add_experience(self, json_obj):
+        self.sanity_check_message(json_obj, [
+            ("algorithmName" in json_obj, ShineProtocol.PROTOCOL_ERROR_FIELD_MISSING, False, "algorithmName"),
+            (self.currentProject is not None, ShineProtocol.PROTOCOL_ERROR_NO_PROJECT_SET, False, "Cannot add experience."),
+            (json_obj["algorithmName"] in self.currentProject.algorithms, ShineProtocol.PROTOCOL_ERROR_ITEM_DOESNT_EXIST, False, json_obj["algorithmName"],
+                "current project"),
+            ("experienceList" in json_obj, ShineProtocol.PROTOCOL_ERROR_FIELD_MISSING, False, "experienceList"),
+            (isinstance(json_obj["experienceList"], list), ShineProtocol.PROTOCOL_ERROR_FIELD_HAS_WRONG_TYPE, False, "experienceList", "list"),
+        ])
+
+        algo_name = json_obj["algorithmName"]
+        algo = self.currentProject.algorithms[algo_name]
+
+        # type checking of single items
+        client_items = json_obj["experienceList"]
+        experiences = []  # will be added to the ReplayMemory
         try:
-            self.sanity_check_message(json_obj, [
-                ("algorithmName" in json_obj, ShineProtocol.PROTOCOL_ERROR_FIELD_MISSING, False, "algorithmName"),
-                (json_obj["algorithmName"] in self.currentProject.algorithms, ShineProtocol.PROTOCOL_ERROR_ITEM_DOESNT_EXIST, False, json_obj["algorithmName"], "project {:s}".format(self.currentProject.name)),
-                ("worldName" in json_obj, ShineProtocol.PROTOCOL_ERROR_FIELD_MISSING, False, "worldName"),
-                (json_obj["worldName"] in self.currentProject.worlds, ShineProtocol.PROTOCOL_ERROR_ITEM_DOESNT_EXIST, False, json_obj["worldName"], "project {:s}".format(self.currentProject.name)),
-            ])
+            for i, item in enumerate(client_items):
+                self.sanity_check_message(json_obj, [
+                    (isinstance(item, list), ShineProtocol.PROTOCOL_ERROR_FIELD_HAS_WRONG_TYPE, False, "item {:d} in experienceList".format(i), "list"),
+                    (isinstance(item[0], list), ShineProtocol.PROTOCOL_ERROR_FIELD_HAS_WRONG_TYPE, False,
+                        "0th element of item {:d} in experienceList".format(i), "list"),
+                    (isinstance(item[1], int), ShineProtocol.PROTOCOL_ERROR_FIELD_HAS_WRONG_TYPE, False,
+                        "1st element of item {:d} in experienceList".format(i), "int"),
+                    (isinstance(item[2], float) or isinstance(item[2], int), ShineProtocol.PROTOCOL_ERROR_FIELD_HAS_WRONG_TYPE, False,
+                        "2nd element of item {:d} in experienceList".format(i), "float or int"),
+                    (isinstance(item[3], list), ShineProtocol.PROTOCOL_ERROR_FIELD_HAS_WRONG_TYPE, False,
+                        "3rd element of item {:d} in experienceList".format(i), "list"),
+                ])
+                experiences.append([tuple(item[0]), item[1], float(item[2]), tuple(item[3])])  # make s and s' tuples so we can look them up in table
         except ShineProtocolClientMessageError as e:
             return self.send_json({"response": "error", "errMsg": str(e)})
 
+        algo.run(options={"experiences": experiences})
+
+    # runs an algorithm on a world
+    # TODO: for now: give a callback (a method of this Protocol) to the algo so we get called whenever the algo reaches some progress, is done, etc..
+    def request_run_algorithm(self, json_obj):
+        self.sanity_check_message(json_obj, [
+            ("algorithmName" in json_obj, ShineProtocol.PROTOCOL_ERROR_FIELD_MISSING, False, "algorithmName"),
+            (self.currentProject is not None, ShineProtocol.PROTOCOL_ERROR_NO_PROJECT_SET, False, "Cannot run algorithm."),
+            (json_obj["algorithmName"] in self.currentProject.algorithms, ShineProtocol.PROTOCOL_ERROR_ITEM_DOESNT_EXIST, False,
+                "Algorithm '{:s}'".format(json_obj["algorithmName"]), "project '{:s}'".format(self.currentProject.name)),
+            (("options" not in json_obj) or isinstance(json_obj["options"], dict), ShineProtocol.PROTOCOL_ERROR_FIELD_HAS_WRONG_TYPE, False, "options", "dict"),
+        ])
+
         # run the algo in the project
         algo_name = json_obj["algorithmName"]
-        world_name = json_obj["worldName"]
-        self.currentProject.algorithms[algo_name].run(self.currentProject.worlds[world_name])
         # TODO: support for multiprocessing algorithm runs
+        algo = self.currentProject.algorithms[algo_name]
+        algo.run(json_obj["options"])
+
         return self.send_json({"notify": "algorithm completed", "algorithmName": algo_name})
 
     # method for when a client requests 'code execution' in a request message
     # - this method sounds scary, but it's very controlled and only allowed commands will be executed
-    # - first, we try to find the variable in the message, then look up the underlying PyRATE object and do things with it (e.g. setup, world generation, algo-setup, learning)
+    # - first, we try to find the variable in the message, then look up the underlying PyRATE object and do things with it (e.g. setup, world generation,
+    #   algo-setup, learning)
     """def requestExecuteCode(self, jsonObj):
         # do some basic checking and look for the project to apply this code to
         if not self.currentProject:
@@ -600,9 +631,12 @@ class ShineProtocol(WebSocketServerProtocol):
 
         self.sanity_check_message(json_obj, [
             (self.gotHelloResponse is False, ShineProtocol.PROTOCOL_ERROR_CUSTOM, True, "Got 'hello' response more than once from client!"),
-            ("protocolVersion" in json_obj and isinstance(json_obj["protocolVersion"], int) and json_obj["protocolVersion"] > 0, ShineProtocol.PROTOCOL_ERROR_INVALID_FIELD_VALUE, True, "protocolVersion"),
-            ("userName" in json_obj and isinstance(json_obj["userName"], str) and len(json_obj["userName"]) <= conf.SHINE_SERVER_MAX_LEN_USERNAME, ShineProtocol.PROTOCOL_ERROR_INVALID_FIELD_VALUE, True, "userName"),
-            (json_obj["userName"] in self.factory.zodbRoot["Users"], ShineProtocol.PROTOCOL_ERROR_CUSTOM, True, "Unknown userName {:s}!".format(json_obj["userName"])),
+            ("protocolVersion" in json_obj and isinstance(json_obj["protocolVersion"], int) and json_obj["protocolVersion"] > 0,
+                ShineProtocol.PROTOCOL_ERROR_INVALID_FIELD_VALUE, True, "protocolVersion"),
+            ("userName" in json_obj and isinstance(json_obj["userName"], str) and len(json_obj["userName"]) <= conf.SHINE_SERVER_MAX_LEN_USERNAME,
+                ShineProtocol.PROTOCOL_ERROR_INVALID_FIELD_VALUE, True, "userName"),
+            (json_obj["userName"] in self.factory.zodbRoot["Users"], ShineProtocol.PROTOCOL_ERROR_CUSTOM, True,
+                "Unknown userName {:s}!".format(json_obj["userName"])),
         ])
 
         self.userName = json_obj["userName"]
