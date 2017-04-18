@@ -12,5 +12,4 @@
 
 
 import shine.spygame.spygame
-import shine.spygame.components
 

@@ -12,8 +12,6 @@
 
 import pygame
 import spygame.spygame as spyg
-import spygame.components as comps
-import spygame.scenes as scenes
 from typing import List, Union
 from pytmx.util_pygame import load_pygame
 
@@ -29,10 +27,10 @@ class RLWorld(object):
             display (pygame.Surface): the display that we render everything on
         """
         self.tmx_file = tmx_file
-        # load in the world's tmx file
-        self.tmx_obj = load_pygame(self.tmx_file)
-        self.level_width = self.tmx_obj.width * self.tmx_obj.tilewidth
-        self.level_height = self.tmx_obj.height * self.tmx_obj.tileheight
+        ## load in the world's tmx file
+        # self.tmx_obj = load_pygame(self.tmx_file)
+        # self.level_width = self.tmx_obj.width * self.tmx_obj.tilewidth
+        # self.level_height = self.tmx_obj.height * self.tmx_obj.tileheight
 
         # register keyboard inputs (get them from the tmx file properties (property='actions' which should be a comma-separated string of pygame key codes (e.g. "K_RIGHT,K_DOWN,K_a,K_1,K_2,K_UP"))
         self.keyboard_inputs = spyg.KeyboardInputs([getattr(pygame, key) for key in self.tmx_obj.properties["actions"].split(',')])

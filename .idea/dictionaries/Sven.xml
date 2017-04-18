@@ -7,6 +7,9 @@
       <w>anims</w>
       <w>argmax</w>
       <w>asctime</w>
+      <w>baleod</w>
+      <w>baleog</w>
+      <w>bitmappable</w>
       <w>blit</w>
       <w>blits</w>
       <w>clientcallable</w>
@@ -25,6 +28,7 @@
       <w>osted</w>
       <w>pausable</w>
       <w>persistency</w>
+      <w>pushee</w>
       <w>pycache</w>
       <w>pygame</w>
       <w>pyrate</w>
