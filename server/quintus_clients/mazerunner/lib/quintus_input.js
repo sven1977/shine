@@ -828,7 +828,7 @@ Quintus.Input = function(Q) {
    *
    * Platformer controls bind to left, and right and allow the player to jump.
    *
-   * Adds the following properties to the entity to control speed and jumping:
+   * Adds the obj_to_follow properties to the entity to control speed and jumping:
    *
    *      {
    *        speed: 200,
@@ -1134,7 +1134,7 @@ Quintus.Input = function(Q) {
    *
    * Adds Step (square grid based) 4-ways controls onto a Sprite
    *
-   * Adds the following properties to the entity:
+   * Adds the obj_to_follow properties to the entity:
    *
    *      {
    *        stepDistance: 32, // should be tile size

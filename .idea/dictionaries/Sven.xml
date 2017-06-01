@@ -10,10 +10,13 @@
       <w>baleod</w>
       <w>baleog</w>
       <w>bitmappable</w>
+      <w>bitmask</w>
       <w>blit</w>
       <w>blits</w>
       <w>clientcallable</w>
       <w>debind</w>
+      <w>dockable</w>
+      <w>dont</w>
       <w>ducandu</w>
       <w>erver</w>
       <w>eural</w>
@@ -22,28 +25,37 @@
       <w>logits</w>
       <w>lstm</w>
       <w>meth</w>
+      <w>mothership</w>
       <w>ntelligent</w>
       <w>nvironment</w>
       <w>oodb</w>
       <w>osted</w>
       <w>pausable</w>
       <w>persistency</w>
+      <w>platformer</w>
       <w>pushee</w>
       <w>pycache</w>
       <w>pygame</w>
       <w>pyrate</w>
       <w>pyrateclientcallable</w>
+      <w>pytmx</w>
+      <w>renderable</w>
       <w>resizes</w>
       <w>rollout</w>
       <w>sars</w>
       <w>softmax</w>
       <w>sourcerer</w>
       <w>spritesheet</w>
+      <w>spygame</w>
       <w>tensorflow</w>
       <w>tileset</w>
       <w>tilesets</w>
       <w>uint</w>
+      <w>undock</w>
+      <w>undocks</w>
+      <w>unfollow</w>
       <w>unpause</w>
+      <w>unregister</w>
       <w>upsert</w>
       <w>zodb</w>
     </words>

@@ -115,7 +115,7 @@ Q.scene('endGame', function(stage) {
 
 
 // start the game (load assets, stage the scene)
-Q.load("sprites.png, game_objects.json, level.json, tiles.png", function() {
+Q.load("sprites.png, sprites.json, level.json, tiles.png", function() {
 	Q.sheet("tiles", "tiles.png", { tilew: 32, tileh: 32 });
 	Q.compileSheets("sprites.png", "sprites.json");
 	Q.stageScene("level1");

@@ -529,7 +529,7 @@ class LSTMGameObjectQLearner(BasicQLearner):
             clipped_grads, _ = tf.clip_by_global_norm(tf.gradients(cost, trainable_vars), grad_clip)
             # the training algo
             train_op = tf.train.AdamOptimizer(learning_rate)
-            # instead of minimize, do the following:
+            # instead of minimize, do the obj_to_follow:
             # 1) we already have the gradients computed (1st part of minimize)
             # 2) apply the clipped gradients to the variables (2nd part of minimize)
             optimizer = train_op.apply_gradients(zip(clipped_grads, trainable_vars))

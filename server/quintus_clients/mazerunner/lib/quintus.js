@@ -22,8 +22,8 @@ various other modules:
 
 * `quintus_input.js` - `Input` module, which allows for user input via keyboard and touchscreen
 * `quintus_sprites.js` - `Sprites` module, which defines a basic `Q.Sprite` class along with spritesheet support in `Q.SpriteSheet`.
-* `quintus_scenes.js` - `Scenes` module. It defines the `Q.Scene` class, which allows creation of reusable scenes, and the `Q.Stage` class, which handles managing a number of game_objects at once.
-* `quintus_anim.js` - `Anim` module, which adds in support for animations on game_objects along with a `viewport` component to follow the player around and a `Q.Repeater` class that can create a repeating, scrolling background.
+* `quintus_scenes.js` - `Scenes` module. It defines the `Q.Scene` class, which allows creation of reusable scenes, and the `Q.Stage` class, which handles managing a number of sprites at once.
+* `quintus_anim.js` - `Anim` module, which adds in support for animations on sprites along with a `viewport` component to follow the player around and a `Q.Repeater` class that can create a repeating, scrolling background.
 
 @module Quintus
 */
@@ -1811,7 +1811,7 @@ var Quintus = exportTarget[key] = function(opts) {
    `{ name: filename }`.
 
    Example usage:
-       Q.load(['game_objects.png','game_objects.,json'],function() {
+       Q.load(['sprites.png','sprites.,json'],function() {
           Q.stageScene("level1"); // or something to start the game.
        });
 
@@ -1923,9 +1923,9 @@ var Quintus = exportTarget[key] = function(opts) {
    Q.load method if used.
 
    Example usage:
-        Q.preload("game_objects.png");
+        Q.preload("sprites.png");
         ...
-        Q.preload("game_objects.json");
+        Q.preload("sprites.json");
         ...
 
         Q.preload(function() {

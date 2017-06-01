@@ -171,7 +171,7 @@ Quintus.Sprites = function(Q) {
 
 
   /**
-   Bitmask 0 to indicate no game_objects
+   Bitmask 0 to indicate no sprites
 
    @property Q.SPRITE_NONE
    @for Quintus.Sprites
